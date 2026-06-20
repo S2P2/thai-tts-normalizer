@@ -20,7 +20,7 @@ Adaptations made here:
     have, including thousands-separator stripping and the toggle flags.
 
 Run with:
-    python tests/test_normalizer.py -v
+    python tests/test_normalizer.py
 """
 
 from __future__ import annotations
