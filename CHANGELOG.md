@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 project aims to follow [Semantic Versioning](https://semver.org/). The current
 version lives in `app.py` (`version="..."`).
 
+## 0.1.2 — 2026-06-20
+
+### Added
+
+- **Normalize the voice-cloning endpoint too.** `POST /audio/speech/clone`
+  (and `/v1/audio/speech/clone`) sends its text as a multipart form field
+  (`text`) alongside a binary `ref_audio` file part, which the previous
+  release passed through untouched. The proxy now parses that multipart body,
+  normalizes the `text` field, and re-encodes the form for the upstream —
+  preserving the reference audio and all other fields. Added a new
+  `python-multipart` dependency for parsing. The reference audio is buffered
+  for the round-trip (capped by the upstream, so safe in practice); every other
+  path still streams.
+
+### Fixed
+
+- **New multipart regression test.** The previous test #9 posted JSON to a
+  fictional `/v1/audio/clone` path; it is replaced with a real multipart call
+  to `/v1/audio/speech/clone` asserting both text normalization and that the
+  binary `ref_audio` survives byte-for-byte.
+
 ## 0.1.1 — 2026-06-19
 
 ### Fixed

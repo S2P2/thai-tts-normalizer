@@ -59,6 +59,24 @@ async def mock_clone(request: Request):
     return {"cloned": True, "bytes": len(raw)}
 
 
+@mock.post("/v1/audio/speech/clone")
+async def mock_clone_speech(request: Request):
+    """Pretends to be OmniVoice's voice-cloning endpoint. Captures the parsed
+    multipart fields so the test can assert `text` was normalized while the
+    binary `ref_audio` part survived byte-for-byte."""
+    form = await request.form()
+    ref = form.get("ref_audio")
+    received.append(
+        {
+            "path": request.url.path,
+            "text": form.get("text"),
+            "filename": ref.filename if ref else None,
+            "file_bytes": await ref.read() if ref else None,
+        }
+    )
+    return Response(content=b"AUDIOCLONE", media_type="audio/wav")
+
+
 def _serve(app: FastAPI, port: int) -> uvicorn.Server:
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     threading.Thread(target=server.run, daemon=True).start()
@@ -152,14 +170,22 @@ def main() -> int:
         f"repeated query params preserved: {pairs}",
     )
 
-    # 9. non-speech POST body forwarded unmodified (streamed, not buffered)
+    # 9. /audio/speech/clone multipart normalization: `text` field normalized,
+    #    binary ref_audio preserved byte-for-byte. (Endpoint is multipart, not JSON.)
     received.clear()
-    payload = {"ref": "base64audio", "text": "untouched 5 ดีๆ", "n": 12345}
-    r = httpx.post(f"{base}/v1/audio/clone", json=payload)
-    fwd = _json.loads(received[-1]["raw"])
-    check(r.status_code == 200, "clone POST forwarded (200)")
-    check(fwd == payload, "non-speech body forwarded unmodified (not normalized)")
-    check(fwd["text"] == "untouched 5 ดีๆ", "clone text NOT normalized (speech-only scope)")
+    r = httpx.post(
+        f"{base}/v1/audio/speech/clone",
+        data={"text": "ดีๆ 99", "voice": "alloy"},
+        files={"ref_audio": ("ref.wav", b"FAKEWAVEDATA", "audio/wav")},
+    )
+    check(r.status_code == 200, "clone POST returns 200")
+    check(len(b"AUDIOCLONE") == len(r.content), "clone audio streamed back intact")
+    check(
+        received[-1]["text"] == "ดีดี เก้าสิบเก้า",
+        f"clone text normalized: {received[-1]['text']}",
+    )
+    check(received[-1]["filename"] == "ref.wav", "clone ref_audio filename preserved")
+    check(received[-1]["file_bytes"] == b"FAKEWAVEDATA", "clone ref_audio bytes preserved")
 
     print(f"\n{'ALL TESTS PASSED' if not failures else str(len(failures)) + ' FAILURE(S): ' + '; '.join(failures)}")
     return 1 if failures else 0

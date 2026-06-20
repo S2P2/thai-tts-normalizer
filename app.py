@@ -24,6 +24,7 @@ from typing import Any, Optional
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from starlette.datastructures import UploadFile
 
 from thai_normalizer import normalize_for_tts
 
@@ -60,6 +61,9 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 
 # Paths whose request body contains the text to speak and must be normalized.
 _SPEECH_PATHS = {"/audio/speech", "/v1/audio/speech"}
+# Voice-cloning endpoints: `text` arrives as a multipart form field (not JSON)
+# alongside a binary `ref_audio` file part.
+_CLONE_PATHS = {"/audio/speech/clone", "/v1/audio/speech/clone"}
 
 logging.basicConfig(
     level=LOG_LEVEL,
@@ -92,7 +96,7 @@ async def _lifespan(fastapi_app: FastAPI):
         await fastapi_app.state.client.aclose()
 
 
-app = FastAPI(title="Thai TTS Normalizing Proxy", version="0.1.1", lifespan=_lifespan)
+app = FastAPI(title="Thai TTS Normalizing Proxy", version="0.1.2", lifespan=_lifespan)
 
 
 def _request_headers(src: Request) -> dict[str, str]:
@@ -136,17 +140,57 @@ def _maybe_normalize_body(body: bytes) -> tuple[bytes, Optional[str], Optional[s
     )
 
 
+async def _maybe_normalize_clone(
+    request: Request,
+) -> tuple[dict[str, str], list, Optional[str], Optional[str]]:
+    """Parse a multipart ``/audio/speech/clone`` request, normalize its ``text``
+    form field, and return ``(data, files, before, after)`` ready for httpx to
+    re-encode. ``before``/``after`` are None when there was no text to normalize.
+
+    Unlike the JSON speech path, this buffers the whole request body (the form,
+    including the reference audio) because the multipart must be re-encoded after
+    rewriting ``text``. The upstream caps reference audio at a modest size, so
+    buffering is safe in practice.
+    """
+    form = await request.form()
+    data: dict[str, str] = {}
+    files: list = []
+    before: Optional[str] = None
+    after: Optional[str] = None
+    for key, value in form.multi_items():
+        if key == "text" and isinstance(value, str):
+            normalized = normalize_for_tts(
+                value, numbers=NORMALIZE_NUMBERS, maiyamok=NORMALIZE_MAIYAMOK
+            )
+            before = value
+            after = normalized
+            data[key] = normalized
+        elif isinstance(value, UploadFile):
+            files.append(
+                (key, (value.filename, await value.read(), value.content_type))
+            )
+        else:
+            data[key] = str(value)
+    return data, files, before, after
+
+
 async def _forward(request: Request) -> Response:
     client: httpx.AsyncClient = app.state.client
     url = UPSTREAM_BASE_URL + request.url.path
-    is_speech = (
-        request.method.upper() == "POST" and request.url.path in _SPEECH_PATHS
-    )
+    method = request.method.upper()
+    path = request.url.path
+    is_speech = method == "POST" and path in _SPEECH_PATHS
+    is_clone = method == "POST" and path in _CLONE_PATHS
 
-    # The speech path must buffer its (small JSON) body so we can rewrite the
-    # `input` field. Every other path streams the request body straight through
-    # without buffering — important for large uploads such as /v1/audio/clone.
+    build_kwargs: dict[str, Any] = {
+        # multi_items() preserves repeated query params (?a=1&a=2);
+        # dict() would silently keep only the last value.
+        "params": list(request.query_params.multi_items()),
+        "headers": _request_headers(request),
+    }
+
     if is_speech:
+        # Buffer the (small JSON) body so we can rewrite the `input` field.
         new_body, before, after = _maybe_normalize_body(await request.body())
         if before is not None:
             log.info(
@@ -156,21 +200,31 @@ async def _forward(request: Request) -> Response:
                 before[:120],
                 (after or "")[:120],
             )
-        content: Any = new_body
+        build_kwargs["content"] = new_body
+    elif is_clone:
+        # /clone is multipart: `text` is a form field, `ref_audio` a binary file
+        # part. Buffer the form, normalize `text`, let httpx re-encode it. Drop
+        # the client's Content-Type so httpx can set its own boundary.
+        data, files, before, after = await _maybe_normalize_clone(request)
+        if before is not None:
+            log.info(
+                "normalized clone text (%d -> %d chars): %r -> %r",
+                len(before),
+                len(after or ""),
+                before[:120],
+                (after or "")[:120],
+            )
+        build_kwargs["headers"] = {
+            k: v for k, v in build_kwargs["headers"].items() if k.lower() != "content-type"
+        }
+        build_kwargs["data"] = data
+        build_kwargs["files"] = files
     else:
-        content = request.stream()
+        # Everything else streams straight through without buffering.
+        build_kwargs["content"] = request.stream()
 
-    headers = _request_headers(request)
     try:
-        req = client.build_request(
-            request.method,
-            url,
-            # multi_items() preserves repeated query params (?a=1&a=2);
-            # dict() would silently keep only the last value.
-            params=list(request.query_params.multi_items()),
-            headers=headers,
-            content=content,
-        )
+        req = client.build_request(method, url, **build_kwargs)
         resp = await client.send(req, stream=True)
     except httpx.HTTPError as exc:
         log.error("upstream request failed: %s", exc)
