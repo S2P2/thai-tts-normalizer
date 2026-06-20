@@ -17,6 +17,14 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Run normalizer unit tests
+        # Unit tests for thai_normalizer.py: number conversion, mai-yamok
+        # expansion, and the normalize_for_tts wrapper. Known bugs tracked in
+        # issues #1/#2/#3 are marked @unittest.expectedFailure, so this stays
+        # green while they are open and goes red if a fix lands without the
+        # test being updated. The file hard-codes unittest.main(verbosity=2),
+        # so no -v flag is needed here.
+        run: python tests/test_normalizer.py
       - name: Run end-to-end tests
         # Spins up a mock TTS upstream + the real proxy in-process and asserts
         # normalization, transparent forwarding, and the multipart clone path.
