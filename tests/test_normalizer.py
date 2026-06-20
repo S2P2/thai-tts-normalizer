@@ -73,6 +73,22 @@ class TestNumToThai(unittest.TestCase):
         self.assertEqual(num_to_thai("10000"), "หนึ่งหมื่น")
         self.assertEqual(num_to_thai("50000"), "ห้าหมื่น")
 
+    def test_hundred_thousands(self):
+        # Magnitudes upstream's tests stop short of (แสน).
+        self.assertEqual(num_to_thai("100000"), "หนึ่งแสน")
+        self.assertEqual(num_to_thai("500000"), "ห้าแสน")
+        self.assertEqual(num_to_thai("123456"), "หนึ่งแสนสองหมื่นสามพันสี่ร้อยห้าสิบหก")
+
+    def test_millions(self):
+        # ล้าน and above. Anchors issue #3's phone-number fix so it doesn't
+        # regress ordinary large-magnitude reading.
+        self.assertEqual(num_to_thai("1000000"), "หนึ่งล้าน")
+        self.assertEqual(num_to_thai("10000000"), "สิบล้าน")
+        self.assertEqual(
+            num_to_thai("12345678"),
+            "สิบสองล้านสามแสนสี่หมื่นห้าพันหกร้อยเจ็ดสิบแปด",
+        )
+
     def test_negative_numbers(self):
         self.assertEqual(num_to_thai("-5"), "ลบห้า")
         self.assertEqual(num_to_thai("-123"), "ลบหนึ่งร้อยยี่สิบสาม")
@@ -160,6 +176,15 @@ class TestNormalizeForTTS(unittest.TestCase):
 
     def test_large_number_with_separator(self):
         self.assertEqual(normalize_for_tts("10,000"), "หนึ่งหมื่น")
+
+    def test_millions_with_separator(self):
+        # Thousands-separator stripping at magnitude (locks in #3 anchor + the
+        # separator-stripping wrapper).
+        self.assertEqual(normalize_for_tts("1,000,000"), "หนึ่งล้าน")
+        self.assertEqual(
+            normalize_for_tts("12,345,678"),
+            "สิบสองล้านสามแสนสี่หมื่นห้าพันหกร้อยเจ็ดสิบแปด",
+        )
 
     def test_maiyamok_toggle_off(self):
         self.assertEqual(normalize_for_tts("ดีๆ", maiyamok=False), "ดีๆ")
