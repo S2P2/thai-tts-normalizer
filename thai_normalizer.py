@@ -1,12 +1,16 @@
 """Thai text normalization for TTS.
 
-The number-to-Thai and ๆ (mai yamok) expansion logic below is vendored
-verbatim from PyThaiTTS (pythaitts.preprocess) — see
+The number-to-Thai and ๆ (mai yamok) expansion logic below is derived
+from PyThaiTTS (pythaitts.preprocess) — see
 https://github.com/PyThaiNLP/PyThaiTTS — licensed under the Apache License,
-Version 2.0. These functions are pure Python (only the stdlib ``re``) and do
-not pull in any TTS model dependencies, which is why they are vendored here
-rather than installed via ``pip install pythaitts`` (that package would try to
-download TTS model weights).
+Version 2.0. The number-to-Thai functions are vendored verbatim;
+``expand_maiyamok`` carries one localized enhancement over the upstream
+original (it leaves a ๆ untouched when it is mentioned inside a quote/code
+span rather than used as a repetition mark — see its docstring and issue #1).
+These functions are pure Python (only the stdlib ``re``) and do not pull in
+any TTS model dependencies, which is why they are vendored here rather than
+installed via ``pip install pythaitts`` (that package would try to download
+TTS model weights).
 
 The wrapper ``normalize_for_tts`` adds one small enhancement on top: it strips
 thousands separators between digits (``1,200`` -> ``1200``) before number
@@ -160,8 +164,62 @@ def num_to_thai(num_str: str) -> str:
         return result
 
 
+# --- Original code (not from PyThaiTTS): quoted-span detection for ๆ --------
+#
+# When ๆ is *mentioned* as a character (e.g. ``ใช้ `ๆ` แทน``) rather than
+# *used* as a repetition mark, it must be left untouched. This only applies
+# when ๆ is the sole (or whitespace-only) content of a matched open/close
+# delimiter span; a ๆ that follows a real word inside the span (e.g.
+# ``"ดีๆ"``) is a genuine repetition and must still expand. See issue #1.
+#
+# Same-char delimiters (open == close):
+_YAMOK_SAME_DELIMS = frozenset("`'\"")
+# Distinct open -> close delimiter pairs:
+_YAMOK_PAIR_DELIMS = {
+    "\u2018": "\u2019",  # ‘ ’
+    "\u201c": "\u201d",  # “ ”
+    "\u00ab": "\u00bb",  # « »
+    "(": ")",
+    "[": "]",
+}
+
+
+def _is_mentioned_yamok(text: str, i: int) -> bool:
+    """Return True if the ๆ at ``text[i]`` is the sole/whitespace-only
+    content of a matched open/close delimiter span.
+
+    We look at the nearest non-space characters immediately to the left and
+    right of the ๆ in the *original* text. If they form a recognized
+    delimiter pair, the ๆ is being quoted/mentioned, not used.
+    """
+    left = None
+    j = i - 1
+    while j >= 0 and text[j].isspace():
+        j -= 1
+    if j >= 0:
+        left = text[j]
+
+    right = None
+    j = i + 1
+    while j < len(text) and text[j].isspace():
+        j += 1
+    if j < len(text):
+        right = text[j]
+
+    if left is None or right is None:
+        return False
+    if left == right and left in _YAMOK_SAME_DELIMS:
+        return True
+    return _YAMOK_PAIR_DELIMS.get(left) == right
+
+
 def expand_maiyamok(text: str) -> str:
-    """Expand the Thai repetition character (ๆ) by repeating the previous word."""
+    """Expand the Thai repetition character (ๆ) by repeating the previous word.
+
+    A ๆ that is the sole content of a quote/code span is left untouched (it
+    is being *mentioned* as a character, not used as a repetition mark); see
+    issue #1.
+    """
     if "ๆ" not in text:
         return text
 
@@ -169,8 +227,11 @@ def expand_maiyamok(text: str) -> str:
     i = 0
     while i < len(text):
         if text[i] == "ๆ":
-            # Find the previous word/syllable to repeat
-            if result:
+            if _is_mentioned_yamok(text, i):
+                # Mentioned inside a quote/code span; keep it as-is.
+                result.append("ๆ")
+            elif result:
+                # Find the previous word/syllable to repeat
                 prev_text = "".join(result)
                 thai_char_pattern = r"[ก-๙]+"
                 matches = list(re.finditer(thai_char_pattern, prev_text))

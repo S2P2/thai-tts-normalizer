@@ -8,16 +8,20 @@ terms that apply to each part.
     License:  MIT  — see LICENSE
 
   thai_normalizer.py (the number-to-Thai and mai-yamok expansion functions)
-    Contains logic vendored verbatim from PyThaiTTS, licensed under the
-    Apache License, Version 2.0 — see LICENSES/Apache-2.0.txt
+    Contains logic derived from PyThaiTTS, licensed under the Apache License,
+    Version 2.0 — see LICENSES/Apache-2.0.txt
 
       Project:  PyThaiTTS
       Source:   https://github.com/PyThaiNLP/PyThaiTTS
       Author:   Wannaphong (PyThaiNLP)
       Module:   pythaitts/preprocess.py
 
-    The wrapper function normalize_for_tts() that calls this vendored logic
-    is original MIT-licensed code.
+    The number-to-Thai functions are vendored verbatim. expand_maiyamok()
+    has one localized enhancement over the upstream original: a ๆ that is the
+    sole content of a quote/code span is left untouched (it is mentioned as a
+    character, not used as a repetition mark) — see issue #1. The helper
+    _is_mentioned_yamok() and the wrapper normalize_for_tts() are original
+    MIT-licensed code.
 
   tests/test_normalizer.py
     Structure and happy-path test cases derived from PyThaiTTS's test suite,
