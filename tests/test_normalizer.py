@@ -208,7 +208,7 @@ class TestNormalizeForTTS(unittest.TestCase):
         """
         self.assertEqual(
             normalize_for_tts("โทร 081-234-5678"),
-            "โทร ศูนย์แปดหนึ่งสองสามสี่ห้าหกเจ็ดแปด",
+            "โทร ศูนย์แปดหนึ่ง สองสามสี่ ห้าหกเจ็ดแปด",
         )
 
 

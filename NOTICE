@@ -27,6 +27,7 @@ terms that apply to each part.
       Project:  PyThaiTTS
       Source:   https://github.com/PyThaiNLP/PyThaiTTS/blob/main/tests/test_preprocess.py
       Author:   Wannaphong (PyThaiNLP)
+      Module:   tests/test_preprocess.py
 
     Adaptations (import path, tightened assertions, expectedFailure cases
     for tracked bugs, and additional normalize_for_tts coverage) are original
