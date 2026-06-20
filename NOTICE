@@ -1,0 +1,20 @@
+thai-tts-normalizer — NOTICE
+============================
+
+This product is distributed under a dual license; see the LICENSE file for the
+terms that apply to each part.
+
+  Proxy code (app.py, thai_normalizer.py wrapper, tests/, Dockerfile, etc.)
+    License:  MIT  — see LICENSE
+
+  thai_normalizer.py (the number-to-Thai and mai-yamok expansion functions)
+    Contains logic vendored verbatim from PyThaiTTS, licensed under the
+    Apache License, Version 2.0 — see LICENSES/Apache-2.0.txt
+
+      Project:  PyThaiTTS
+      Source:   https://github.com/PyThaiNLP/PyThaiTTS
+      Author:   Wannaphong (PyThaiNLP)
+      Module:   pythaitts/preprocess.py
+
+    The wrapper function normalize_for_tts() that calls this vendored logic
+    is original MIT-licensed code.

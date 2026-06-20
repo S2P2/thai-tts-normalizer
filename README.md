@@ -115,4 +115,7 @@ All via environment variables (see `.env.example`):
 
 ## License
 
-Proxy code: MIT. Vendored normalization logic: Apache-2.0 (PyThaiTTS).
+- Proxy code: **MIT** — see [LICENSE](LICENSE).
+- Vendored normalization logic in `thai_normalizer.py`: **Apache-2.0**, from
+  [PyThaiTTS](https://github.com/PyThaiNLP/PyThaiTTS) — see
+  [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt) and [NOTICE](NOTICE).
