@@ -12,10 +12,12 @@ Adaptations made here:
   * Imports point at our vendored copy (``thai_normalizer``), not pythaitts.
   * Loose upstream assertions (assertIn / assertNotIn) are tightened to pin the
     exact expected string, so behaviour drift is caught.
-  * The known bugs tracked in GitHub issues #1, #2, #3 are encoded as
+  * The known bugs tracked in GitHub issues #2 and #3 are encoded as
     ``@unittest.expectedFailure``. They stay green while the bug exists and flip
     to "unexpected success" (red) the moment a fix lands -- which is the prompt
-    to remove the decorator and turn them into ordinary passing tests.
+    to remove the decorator and turn them into ordinary passing tests. (Issue
+    #1 was fixed and its former expectedFailure is now an ordinary passing
+    test, plus delimiter-coverage and regression-guard cases.)
   * Adds coverage for ``normalize_for_tts`` (our wrapper) that upstream does not
     have, including thousands-separator stripping and the toggle flags.
 
@@ -112,7 +114,40 @@ class TestExpandMaiyamok(unittest.TestCase):
         self.assertEqual(expand_maiyamok("ภาษาไทย"), "ภาษาไทย")
         self.assertEqual(expand_maiyamok("สวัสดี"), "สวัสดี")
 
-    # --- Known bugs: expected to FAIL until the issues are fixed -------------
+    # --- Issue #1: ๆ mentioned inside a quote/code span is left untouched ----
+
+    def test_maiyamok_not_expanded_inside_code_span(self):
+        self.assertEqual(expand_maiyamok("ใช้ `ๆ` แทน"), "ใช้ `ๆ` แทน")
+
+    def test_maiyamok_not_expanded_inside_other_delimiters(self):
+        """Sole-content ๆ in any recognized quote/bracket span is protected."""
+        for opener, closer in [
+            ("'", "'"),               # straight single quote
+            ('"', '"'),               # straight double quote
+            ("\u2018", "\u2019"),     # curly single
+            ("\u201c", "\u201d"),     # curly double
+            ("\u00ab", "\u00bb"),     # « »
+            ("(", ")"),               # parentheses
+            ("[", "]"),               # brackets
+        ]:
+            with self.subTest(open=opener, close=closer):
+                inp = f"ใช้ {opener}ๆ{closer} แทน"
+                self.assertEqual(expand_maiyamok(inp), inp)
+
+    def test_maiyamok_whitespace_inside_delimiters(self):
+        self.assertEqual(expand_maiyamok("` ๆ `"), "` ๆ `")
+
+    def test_maiyamok_multiple_quoted_spans(self):
+        self.assertEqual(expand_maiyamok("`ๆ` และ `ๆ`"), "`ๆ` และ `ๆ`")
+
+    def test_maiyamok_real_repeat_inside_quotes_still_expands(self):
+        """Regression guard: a ๆ that follows a real word inside a span is a
+        genuine repetition and must still expand (the fix must not suppress it)."""
+        self.assertEqual(expand_maiyamok('"ดีๆ"'), '"ดีดี"')
+        self.assertEqual(expand_maiyamok('เขียน "เร็วๆ" หน่อย'), 'เขียน "เร็วเร็ว" หน่อย')
+        self.assertEqual(expand_maiyamok("(ดีๆ)"), "(ดีดี)")
+
+    # --- Known bug: expected to FAIL until issue #2 is fixed -----------------
 
     @unittest.expectedFailure
     def test_maiyamok_in_sentence_repeats_only_last_word(self):
@@ -123,15 +158,6 @@ class TestExpandMaiyamok(unittest.TestCase):
         (assertNotIn ๆ + assertIn ช้า) and so never caught this.
         """
         self.assertEqual(expand_maiyamok("เดินช้าๆ"), "เดินช้าช้า")
-
-    @unittest.expectedFailure
-    def test_maiyamok_not_expanded_inside_code_span(self):
-        """Issue #1: a ๆ that is quoted/mentioned must be left untouched.
-
-        Current (buggy) output is ``ใช้ `ใช้` แทน`` -- the quoted ๆ triggers
-        spurious repetition of the preceding word.
-        """
-        self.assertEqual(expand_maiyamok("ใช้ `ๆ` แทน"), "ใช้ `ๆ` แทน")
 
 
 class TestPreprocessText(unittest.TestCase):

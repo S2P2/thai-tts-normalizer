@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 project aims to follow [Semantic Versioning](https://semver.org/). The current
 version lives in `app.py` (`version="..."`).
 
+## Unreleased
+
+### Fixed
+
+- **Don't expand ๆ when it's quoted/mentioned (issue #1).** A ๆ that is the
+  sole content of a quote or code span — e.g. `` ใช้ `ๆ` แทน `` — was being
+  treated as a repetition mark and expanded the preceding word (so the word
+  นิยมใช้ before a quoted ๆ was wrongly duplicated as นิยมใช้ นิยมใช้).
+  `expand_maiyamok` now detects this
+  case (backtick, straight/curly quotes, guillemets, parentheses, brackets;
+  whitespace around the ๆ allowed) and leaves the ๆ untouched. Genuine
+  repetitions that follow a real word inside a span (e.g. `"ดีๆ"` → `"ดีดี"`)
+  still expand as before. This is a localized enhancement to the
+  PyThaiTTS-derived `expand_maiyamok`; NOTICE updated accordingly.
+
 ## 0.1.2 — 2026-06-20
 
 ### Added
