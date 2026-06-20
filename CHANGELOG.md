@@ -12,8 +12,9 @@ version lives in `app.py` (`version="..."`).
 
 - **Don't expand ๆ when it's quoted/mentioned (issue #1).** A ๆ that is the
   sole content of a quote or code span — e.g. `` ใช้ `ๆ` แทน `` — was being
-  treated as a repetition mark and expanded the preceding word
-  (`นิยมใช้ `ๆ`` → `นิยมใช้ `นิยมใช้``). `expand_maiyamok` now detects this
+  treated as a repetition mark and expanded the preceding word (so the word
+  นิยมใช้ before a quoted ๆ was wrongly duplicated as นิยมใช้ นิยมใช้).
+  `expand_maiyamok` now detects this
   case (backtick, straight/curly quotes, guillemets, parentheses, brackets;
   whitespace around the ๆ allowed) and leaves the ๆ untouched. Genuine
   repetitions that follow a real word inside a span (e.g. `"ดีๆ"` → `"ดีดี"`)

@@ -164,7 +164,9 @@ def num_to_thai(num_str: str) -> str:
         return result
 
 
-# --- Original code (not from PyThaiTTS): quoted-span detection for ๆ --------
+# --- End vendored code --------------------------------------------------------
+
+# --- Local enhancement to expand_maiyamok (issue #1; not in upstream) --------
 #
 # When ๆ is *mentioned* as a character (e.g. ``ใช้ `ๆ` แทน``) rather than
 # *used* as a repetition mark, it must be left untouched. This only applies
@@ -247,6 +249,7 @@ def expand_maiyamok(text: str) -> str:
     return "".join(result)
 
 
+# preprocess_text below is vendored verbatim from PyThaiTTS/pythaitts/preprocess.py.
 def preprocess_text(
     text: str,
     expand_numbers: bool = True,
@@ -269,8 +272,6 @@ def preprocess_text(
 
     return result
 
-
-# --- End vendored code --------------------------------------------------------
 
 # A comma (or full-width comma) sitting between two digits is a thousands
 # separator (e.g. "1,200" or "10,000.50"). Stripping it before number
