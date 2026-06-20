@@ -18,3 +18,16 @@ terms that apply to each part.
 
     The wrapper function normalize_for_tts() that calls this vendored logic
     is original MIT-licensed code.
+
+  tests/test_normalizer.py
+    Structure and happy-path test cases derived from PyThaiTTS's test suite,
+    licensed under the Apache License, Version 2.0 — see
+    LICENSES/Apache-2.0.txt
+
+      Project:  PyThaiTTS
+      Source:   https://github.com/PyThaiNLP/PyThaiTTS/blob/main/tests/test_preprocess.py
+      Author:   Wannaphong (PyThaiNLP)
+
+    Adaptations (import path, tightened assertions, expectedFailure cases
+    for tracked bugs, and additional normalize_for_tts coverage) are original
+    MIT-licensed code.
