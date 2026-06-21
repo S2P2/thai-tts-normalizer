@@ -21,6 +21,11 @@ _Avoid_: operative, active
 ๆ is being referred to *as a character* — it is the subject being talked about, not a repetition. `ใช้ \`ๆ\` แทน` ("use \`ๆ\` instead") is **mentioned**. Being inside quote delimiters alone does not make a ๆ mentioned; a ๆ that follows a real word and repeats it (even inside quotes, e.g. `"ดีๆ"`) is still **used**.
 _Avoid_: quoted, referred to
 
+Mention-detection is delimiter-based: the quote/code span around the ๆ must
+reach the normalizer intact. A client that renders markdown (e.g. Open WebUI)
+consumes backtick code spans, so `` `ๆ` `` arrives bare and is read as
+**used**. `'`, `"`, and curly quotes are not markdown delimiters and survive.
+
 ### Rendering a mentioned ๆ
 
 A mentioned ๆ (one that is *not* expanded) must still be emitted somehow. The choice is **model-dependent** — different TTS models handle the bare character differently. See issue #7.

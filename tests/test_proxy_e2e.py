@@ -99,6 +99,15 @@ def _wait(url: str, timeout: float = 10.0) -> None:
     raise RuntimeError(f"{url} never came up (last={last})")
 
 
+def _pythainlp_available() -> bool:
+    try:
+        import pythainlp  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 def main() -> int:
     _serve(mock, 9999)
     # import the proxy app now that env is set
@@ -136,6 +145,16 @@ def main() -> int:
     fwd = _json.loads(received[-1]["raw"])
     check(fwd["input"] == "ดีดี หนึ่งร้อยยี่สิบสาม", "input normalized (/audio): " + fwd["input"])
 
+    # 2b. issue #3: a leading-zero phone number is read digit-by-digit, dashes
+    #     -> spaces, end-to-end through the proxy.
+    received.clear()
+    httpx.post(f"{base}/v1/audio/speech", json={"input": "โทร 081-234-5678"})
+    fwd = _json.loads(received[-1]["raw"])
+    check(
+        fwd["input"] == "โทร ศูนย์แปดหนึ่ง สองสามสี่ ห้าหกเจ็ดแปด",
+        f"phone number read digit-by-digit: {fwd['input']}",
+    )
+
     # 3. already-normalized / no digits-or-ๆ text passes through unchanged
     received.clear()
     httpx.post(f"{base}/v1/audio/speech", json={"input": "สวัสดีครับ"})
@@ -166,6 +185,10 @@ def main() -> int:
     check(
         health.get("yamok_mention_render") == "keep",
         f"_health reports yamok_mention_render=keep (got {health.get('yamok_mention_render')!r})",
+    )
+    check(
+        health.get("yamok_segmenter") == "off",
+        f"_health reports yamok_segmenter=off (got {health.get('yamok_segmenter')!r})",
     )
 
     # 8. repeated query params are preserved (not collapsed by dict())
@@ -248,6 +271,43 @@ def main() -> int:
     finally:
         name_server.terminate()
         name_server.wait(timeout=5)
+
+    # 12. YAMOK_SEGMENTER=pythainlp threads end-to-end: a used ๆ with no space
+    #     before it repeats only the last word. Skipped when pythainlp (an
+    #     optional dependency, ADR-0001) isn't importable; CI installs it.
+    if not _pythainlp_available():
+        print("  SKIP pythainlp not installed — YAMOK_SEGMENTER=pythainlp e2e check")
+    else:
+        seg_env = os.environ.copy()
+        seg_env["YAMOK_SEGMENTER"] = "pythainlp"
+        seg_env["UPSTREAM_BASE_URL"] = "http://127.0.0.1:9999"
+        seg_env["LISTEN_PORT"] = "8090"
+        seg_env["LISTEN_HOST"] = "127.0.0.1"
+        seg_env["LOG_LEVEL"] = "WARNING"
+        seg_server = subprocess.Popen(
+            [sys.executable, "-c", "import uvicorn, app; uvicorn.run(app.app, host='127.0.0.1', port=8090, log_level='warning')"],
+            env=seg_env,
+            cwd=repo_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            _wait("http://127.0.0.1:8090/_health")
+            received.clear()
+            r = httpx.post(
+                "http://127.0.0.1:8090/v1/audio/speech",
+                json={"input": "เดินช้าๆ", "voice": "alloy"},
+                timeout=10.0,
+            )
+            check(r.status_code == 200, "segmenter-mode speech POST returns 200")
+            fwd = _json.loads(received[-1]["raw"])
+            check(
+                fwd["input"] == "เดินช้าช้า",
+                f"segmenter-mode repeats only the last word: {fwd['input']}",
+            )
+        finally:
+            seg_server.terminate()
+            seg_server.wait(timeout=5)
 
     print(f"\n{'ALL TESTS PASSED' if not failures else str(len(failures)) + ' FAILURE(S): ' + '; '.join(failures)}")
     return 1 if failures else 0

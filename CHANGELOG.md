@@ -6,9 +6,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 project aims to follow [Semantic Versioning](https://semver.org/). The current
 version lives in `app.py` (`version="..."`).
 
-## Unreleased
+## 0.1.3 — 2026-06-21
+
+### Added
+
+- **Configurable rendering of a mentioned ๆ (issue #7).** A *mentioned* ๆ
+  — one that is the sole content of a matched quote/code span rather than a
+  repetition mark — must still be emitted somehow, and different TTS models
+  handle the bare character differently. New `YAMOK_MENTION_RENDER` env var
+  selects how: `keep` (default, emit verbatim), `name` (replace with
+  `ไม้ยมก`, its spoken name), or `strip` (remove it). A ๆ *used* as a
+  repetition mark is always expanded regardless of the mode. Threaded env →
+  `app.py` constant → `normalize_for_tts` kwarg → `expand_maiyamok` param.
+
+- **Optional pythainlp segmenter for ๆ (issue #2, ADR-0001).** A *used* ๆ can
+  now repeat only the last *word* before it instead of the whole Thai run —
+  e.g. `เดินช้าๆ` → `เดินช้าช้า` (was `เดินช้าเดินช้า`) — when the new
+  `YAMOK_SEGMENTER=pythainlp` toggle is set. pythainlp is an **optional**
+  dependency (`pip install pythainlp`; not added to `requirements.txt`), so the
+  default (`off`) keeps the normalizer stdlib-only and reproduces today's
+  behaviour. `word_tokenize` is imported lazily and warmed up once at startup;
+  if the package is absent the setting falls back to `off` with a warning.
+  Decision recorded in ADR-0001 (`docs/adr/`).
 
 ### Fixed
+
+- **Keep a bare ๆ instead of silently deleting it (issue #4).** A ๆ with
+  nothing valid to repeat (a bare ๆ, or one preceded only by non-Thai text)
+  was silently skipped, losing what the user typed. `expand_maiyamok` now
+  keeps it verbatim — not safe or reversible to drop input silently.
+
+- **Read leading-zero identifiers (phone numbers) digit-by-digit (issue #3,
+  first slice).** A digit run whose first group starts with `0` (len ≥ 2), or a
+  dash-separated sequence whose first group does, is now treated as an
+  *Identifier* (CONTEXT.md) and read digit-by-digit, with dashes between groups
+  becoming single spaces — e.g. `โทร 081-234-5678` → `โทร ศูนย์แปดหนึ่ง สองสามสี่
+  ห้าหกเจ็ดแปด`, and `0212345678` is read digit-by-digit instead of as one
+  large magnitude. The trigger is deliberately narrow: a Quantity never has a
+  leading zero, so Quantities and decimals (`0.5`, `1.081`, `012.34`, `1007`,
+  `1234`, dates like `2024-03-15`) are unchanged. Partially closes the
+  phone-number item from the 0.1.0 known limitations. Identifiers without a
+  leading zero (national ID, zip, account no.), keyword-driven detection, and
+  other multi-component patterns (IP addresses, dates) are planned follow-up
+  slices — see #15.
 
 - **Don't expand ๆ when it's quoted/mentioned (issue #1).** A ๆ that is the
   sole content of a quote or code span — e.g. `` ใช้ `ๆ` แทน `` — was being

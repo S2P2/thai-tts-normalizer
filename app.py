@@ -26,7 +26,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.datastructures import UploadFile
 
-from thai_normalizer import normalize_for_tts, YAMOK_MENTION_RENDERS
+from thai_normalizer import (
+    normalize_for_tts,
+    warmup_yamok_segmenter,
+    YAMOK_MENTION_RENDERS,
+    YAMOK_SEGMENTERS,
+)
 
 # Hop-by-hop headers (RFC 7230) plus ``host``/``content-length`` which the
 # outbound client must recompute for the request body we forward.
@@ -64,6 +69,30 @@ def _resolve_mention_render() -> str:
     return raw
 
 
+def _resolve_segmenter() -> str:
+    """Resolve YAMOK_SEGMENTER to one of off/pythainlp; fall back to ``off``
+    with a warning on any unrecognised value, and also when ``pythainlp`` is
+    chosen but the optional ``pythainlp`` package is not installed (issue #2)."""
+    raw = os.environ.get("YAMOK_SEGMENTER", "off").strip().lower()
+    if raw not in YAMOK_SEGMENTERS:
+        log.warning(
+            "YAMOK_SEGMENTER=%r is not one of %s; falling back to 'off'",
+            raw,
+            sorted(YAMOK_SEGMENTERS),
+        )
+        return "off"
+    if raw == "pythainlp":
+        try:
+            import pythainlp  # noqa: F401
+        except ImportError:
+            log.warning(
+                "YAMOK_SEGMENTER=pythainlp but pythainlp is not installed; "
+                "falling back to 'off'. Install it with: pip install pythainlp"
+            )
+            return "off"
+    return raw
+
+
 UPSTREAM_BASE_URL = os.environ.get("UPSTREAM_BASE_URL", "").rstrip("/")
 LISTEN_HOST = os.environ.get("LISTEN_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "8080"))
@@ -93,6 +122,7 @@ if not UPSTREAM_BASE_URL:
 
 # Resolved after `log` exists so a bad value can be warned about at import.
 YAMOK_MENTION_RENDER = _resolve_mention_render()
+YAMOK_SEGMENTER = _resolve_segmenter()
 
 @asynccontextmanager
 async def _lifespan(fastapi_app: FastAPI):
@@ -102,19 +132,25 @@ async def _lifespan(fastapi_app: FastAPI):
         follow_redirects=True,
     )
     log.info(
-        "forwarding to %s | numbers=%s maiyamok=%s yamok_mention_render=%s",
+        "forwarding to %s | numbers=%s maiyamok=%s yamok_mention_render=%s yamok_segmenter=%s",
         UPSTREAM_BASE_URL or "(unset)",
         NORMALIZE_NUMBERS,
         NORMALIZE_MAIYAMOK,
         YAMOK_MENTION_RENDER,
+        YAMOK_SEGMENTER,
     )
+    if YAMOK_SEGMENTER == "pythainlp":
+        # Pay the one-time ~250ms newmm-trie load at startup, not on the first
+        # request (issue #2).
+        warmup_yamok_segmenter()
+        log.info("yamok segmenter warmed up")
     try:
         yield
     finally:
         await fastapi_app.state.client.aclose()
 
 
-app = FastAPI(title="Thai TTS Normalizing Proxy", version="0.1.2", lifespan=_lifespan)
+app = FastAPI(title="Thai TTS Normalizing Proxy", version="0.1.3", lifespan=_lifespan)
 
 
 def _request_headers(src: Request) -> dict[str, str]:
@@ -150,6 +186,7 @@ def _maybe_normalize_body(body: bytes) -> tuple[bytes, Optional[str], Optional[s
         numbers=NORMALIZE_NUMBERS,
         maiyamok=NORMALIZE_MAIYAMOK,
         yamok_mention_render=YAMOK_MENTION_RENDER,
+        yamok_segmenter=YAMOK_SEGMENTER,
     )
     if normalized == text:
         return body, None, None
@@ -185,6 +222,7 @@ async def _maybe_normalize_clone(
                 numbers=NORMALIZE_NUMBERS,
                 maiyamok=NORMALIZE_MAIYAMOK,
                 yamok_mention_render=YAMOK_MENTION_RENDER,
+                yamok_segmenter=YAMOK_SEGMENTER,
             )
             before = value
             after = normalized
@@ -279,6 +317,7 @@ async def _health() -> dict[str, Any]:
         "numbers": NORMALIZE_NUMBERS,
         "maiyamok": NORMALIZE_MAIYAMOK,
         "yamok_mention_render": YAMOK_MENTION_RENDER,
+        "yamok_segmenter": YAMOK_SEGMENTER,
     }
 
 

@@ -100,6 +100,7 @@ All via environment variables (see `.env.example`):
 | `NORMALIZE_NUMBERS` | `true` | Convert digits to Thai words. |
 | `NORMALIZE_MAIYAMOK` | `true` | Expand ๆ. |
 | `YAMOK_MENTION_RENDER` | `keep` | How a *mentioned* ๆ (inside a quote/code span) is rendered: `keep` (verbatim), `name` (replace with `ไม้ยมก`), or `strip` (remove). A ๆ *used* as a repetition mark is always expanded regardless. Unrecognised values fall back to `keep`. |
+| `YAMOK_SEGMENTER` | `off` | How the word to repeat for a *used* ๆ is found: `off` (default, stdlib — repeats the last Thai run) or `pythainlp` (segments and repeats only the last word, fixing #2). `pythainlp` needs the optional `pip install pythainlp`; if absent, falls back to `off`. See ADR-0001. |
 | `REQUEST_TIMEOUT` | `120` | Connect/write timeout (s). Audio streaming has no read timeout. |
 | `LOG_LEVEL` | `INFO` | Log verbosity. |
 
@@ -107,12 +108,34 @@ All via environment variables (see `.env.example`):
 > content of a matched quote/bracket pair (the delimiter-detected case).
 > A bare ๆ with no surrounding delimiters is kept verbatim regardless of
 > this setting. (`CONTEXT.md` defines *mentioned* more broadly.)
+>
+> **Note:** `YAMOK_SEGMENTER=pythainlp` is an *opt-in* enhancement. The default
+> (`off`) keeps the normalizer stdlib-only. Enabling `pythainlp` requires
+> `pip install pythainlp` (not in the default image or `requirements.txt`); in
+> Docker, add it to the image. The proxy warms the tokenizer once at startup so
+> the first request doesn't pay the one-time load cost.
 
 ## Limitations
 
-- **Phone numbers / long digit strings** are read as a whole number
-  (`021234567` → a very large number), not digit-by-digit. This is inherited
-  from PyThaiTTS's digit→word logic. Tell me if you need phone-number handling.
+- **ๆ after an unspaced Thai run** repeats the whole run by default (e.g.
+  `เดินช้าๆ` → `เดินช้าเดินช้า`), because the stdlib regex can't find the true
+  last word. Set `YAMOK_SEGMENTER=pythainlp` (with `pip install pythainlp`) to
+  repeat only the last word (issue #2, ADR-0001).
+
+- **Mention-detection of ๆ needs its delimiters to survive.** A ๆ quoted with
+  backticks (`` `ๆ` ``) is correctly treated as *mentioned* only if the
+  backticks reach the normalizer. Clients that render markdown (e.g. Open WebUI)
+  consume backtick code spans, so the ๆ arrives bare and is read as *used*
+  (expanded). Use `'`, `"`, or curly quotes instead — they aren't markdown
+  delimiters and pass through.
+
+- **Phone numbers and other leading-zero identifiers** are read digit-by-digit
+  when the first digit group starts with `0` (e.g. `081-234-5678` →
+  `ศูนย์แปดหนึ่ง สองสามสี่ ห้าหกเจ็ดแปด`; `0212345678` read digit-by-digit).
+  The trigger is deliberately narrow — a Quantity never has a leading zero, so
+  this never misreads a Quantity. Not yet handled (planned follow-up slices):
+  identifiers *without* a leading zero (national ID, account/tracking numbers,
+  zip codes) and keyword-driven detection (`โทร`/`เบอร์`/`รหัส` + digits).
 - **Thai numerals** (๑๒๓) are not converted — only Arabic digits (123).
   Many TTS servers (including OmniVoice) handle Thai numerals already.
 - **Scope of digit conversion**: every digit run is converted, including
