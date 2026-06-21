@@ -7,6 +7,7 @@ Not part of the runtime; run with the venv active:
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -160,7 +161,12 @@ def main() -> int:
 
     # 7. health
     r = httpx.get(f"{base}/_health")
-    check(r.status_code == 200 and r.json()["status"] == "ok", "_health reports ok")
+    health = r.json()
+    check(r.status_code == 200 and health["status"] == "ok", "_health reports ok")
+    check(
+        health.get("yamok_mention_render") == "keep",
+        f"_health reports yamok_mention_render=keep (got {health.get('yamok_mention_render')!r})",
+    )
 
     # 8. repeated query params are preserved (not collapsed by dict())
     r = httpx.get(f"{base}/v1/q?a=1&a=2&b=3")
@@ -186,6 +192,62 @@ def main() -> int:
     )
     check(received[-1]["filename"] == "ref.wav", "clone ref_audio filename preserved")
     check(received[-1]["file_bytes"] == b"FAKEWAVEDATA", "clone ref_audio bytes preserved")
+
+    # 10. YAMOK_MENTION_RENDER: an unrecognised value falls back to "keep"
+    #     without crashing (issue #7). Imported in a subprocess so the bad
+    #     value is seen at app import time, where env is read.
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    bad_env = os.environ.copy()
+    bad_env["YAMOK_MENTION_RENDER"] = "not-a-mode"
+    bad_env["UPSTREAM_BASE_URL"] = "http://127.0.0.1:9999"
+    bad_env["LOG_LEVEL"] = "WARNING"
+    proc = subprocess.run(
+        [sys.executable, "-c", "import app; print(app.YAMOK_MENTION_RENDER)"],
+        capture_output=True,
+        text=True,
+        env=bad_env,
+        cwd=repo_root,
+    )
+    check(proc.returncode == 0, f"bad YAMOK_MENTION_RENDER doesn't crash (rc={proc.returncode}, stderr={proc.stderr.strip()[:160]})")
+    check(
+        proc.stdout.strip() == "keep",
+        f"bad YAMOK_MENTION_RENDER falls back to keep: {proc.stdout.strip()!r}",
+    )
+
+    # 11. YAMOK_MENTION_RENDER=name threads end-to-end: a mentioned ๆ in a
+    #     speech request is rendered as ไม้ยมก at the upstream. (Run in its own
+    #     subprocess server so we can set the mode without disturbing the
+    #     default-mode assertions above.)
+    name_env = os.environ.copy()
+    name_env["YAMOK_MENTION_RENDER"] = "name"
+    name_env["UPSTREAM_BASE_URL"] = "http://127.0.0.1:9999"
+    name_env["LISTEN_PORT"] = "8089"
+    name_env["LISTEN_HOST"] = "127.0.0.1"
+    name_env["LOG_LEVEL"] = "WARNING"
+    name_server = subprocess.Popen(
+        [sys.executable, "-c", "import uvicorn, app; uvicorn.run(app.app, host='127.0.0.1', port=8089, log_level='warning')"],
+        env=name_env,
+        cwd=repo_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        _wait("http://127.0.0.1:8089/_health")
+        received.clear()
+        r = httpx.post(
+            "http://127.0.0.1:8089/v1/audio/speech",
+            json={"input": "ใช้ `ๆ` แทน", "voice": "alloy"},
+            timeout=10.0,
+        )
+        check(r.status_code == 200, "name-mode speech POST returns 200")
+        fwd = _json.loads(received[-1]["raw"])
+        check(
+            fwd["input"] == "ใช้ `ไม้ยมก` แทน",
+            f"name-mode renders mentioned ๆ as ไม้ยมก end-to-end: {fwd['input']}",
+        )
+    finally:
+        name_server.terminate()
+        name_server.wait(timeout=5)
 
     print(f"\n{'ALL TESTS PASSED' if not failures else str(len(failures)) + ' FAILURE(S): ' + '; '.join(failures)}")
     return 1 if failures else 0

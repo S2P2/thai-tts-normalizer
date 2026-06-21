@@ -99,8 +99,14 @@ All via environment variables (see `.env.example`):
 | `UPSTREAM_API_KEY` | _(empty)_ | Force an `Authorization: Bearer …` upstream. Empty = forward what the client sends. |
 | `NORMALIZE_NUMBERS` | `true` | Convert digits to Thai words. |
 | `NORMALIZE_MAIYAMOK` | `true` | Expand ๆ. |
+| `YAMOK_MENTION_RENDER` | `keep` | How a *mentioned* ๆ (inside a quote/code span) is rendered: `keep` (verbatim), `name` (replace with `ไม้ยมก`), or `strip` (remove). A ๆ *used* as a repetition mark is always expanded regardless. Unrecognised values fall back to `keep`. |
 | `REQUEST_TIMEOUT` | `120` | Connect/write timeout (s). Audio streaming has no read timeout. |
 | `LOG_LEVEL` | `INFO` | Log verbosity. |
+
+> **Note:** `YAMOK_MENTION_RENDER` applies only to a ๆ that is the sole
+> content of a matched quote/bracket pair (the delimiter-detected case).
+> A bare ๆ with no surrounding delimiters is kept verbatim regardless of
+> this setting. (`CONTEXT.md` defines *mentioned* more broadly.)
 
 ## Limitations
 
