@@ -10,6 +10,20 @@ version lives in `app.py` (`version="..."`).
 
 ### Fixed
 
+- **Read leading-zero identifiers (phone numbers) digit-by-digit (issue #3,
+  first slice).** A digit run whose first group starts with `0` (len ≥ 2), or a
+  dash-separated sequence whose first group does, is now treated as an
+  *Identifier* (CONTEXT.md) and read digit-by-digit, with dashes between groups
+  becoming single spaces — e.g. `โทร 081-234-5678` → `โทร ศูนย์แปดหนึ่ง สองสามสี่
+  ห้าหกเจ็ดแปด`, and `0212345678` is read digit-by-digit instead of as one
+  large magnitude. The trigger is deliberately narrow: a Quantity never has a
+  leading zero, so amounts and decimals (`0.5`, `1.081`, `012.34`, `1007`,
+  `1234`, dates like `2024-03-15`) are unchanged. Partially closes the
+  phone-number item from the 0.1.0 known limitations. Identifiers without a
+  leading zero (national ID, zip, account no.), keyword-driven detection, and
+  other multi-component patterns (IP addresses, dates) are planned follow-up
+  slices — see #15.
+
 - **Don't expand ๆ when it's quoted/mentioned (issue #1).** A ๆ that is the
   sole content of a quote or code span — e.g. `` ใช้ `ๆ` แทน `` — was being
   treated as a repetition mark and expanded the preceding word (so the word
