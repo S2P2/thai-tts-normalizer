@@ -15,9 +15,10 @@ Adaptations made here:
   * The known bugs tracked in GitHub issues #2 and #3 are encoded as
     ``@unittest.expectedFailure``. They stay green while the bug exists and flip
     to "unexpected success" (red) the moment a fix lands -- which is the prompt
-    to remove the decorator and turn them into ordinary passing tests. (Issue
-    #1 was fixed and its former expectedFailure is now an ordinary passing
-    test, plus delimiter-coverage and regression-guard cases.)
+    to remove the decorator and turn them into ordinary passing tests. Issues
+    #1 and #3 have since been fixed; their former expectedFailures are now
+    ordinary passing tests, plus coverage and regression-guard cases. Issue #2
+    remains an expectedFailure.
   * Adds coverage for ``normalize_for_tts`` (our wrapper) that upstream does not
     have, including thousands-separator stripping and the toggle flags.
 
@@ -329,19 +330,77 @@ class TestNormalizeForTTS(unittest.TestCase):
         self.assertEqual(normalize_for_tts(""), "")
         self.assertIsNone(normalize_for_tts(None))
 
-    # --- Known bug: expected to FAIL until issue #3 is fixed -----------------
+    # --- Issue #3: leading-zero identifiers / phone numbers read digit-by-digit ----
 
-    @unittest.expectedFailure
     def test_phone_number_read_digit_by_digit(self):
-        """Issue #3: phone numbers should be spelled out digit-by-digit.
-
-        Current (buggy) output reads each segment as a magnitude and pronounces
-        the dashes as ลบ (minus), e.g.
-        ``โทร แปดสิบเอ็ดลบสองร้อยสามสิบสี่ลบห้าพันหกร้อยเจ็ดสิบแปด``.
-        """
+        """Issue #3: an Identifier (leading-zero code or phone number) is read
+        digit-by-digit; dashes between groups become spaces."""
         self.assertEqual(
             normalize_for_tts("โทร 081-234-5678"),
             "โทร ศูนย์แปดหนึ่ง สองสามสี่ ห้าหกเจ็ดแปด",
+        )
+
+
+class TestIdentifierReading(unittest.TestCase):
+    """Issue #3 first slice: a leading-zero digit run, or a dash-separated
+    sequence whose first group starts with '0', is an Identifier and read
+    digit-by-digit (CONTEXT.md: Identifier). Quantities and decimals are not
+    reclassified -- see the regression guards below.
+    """
+
+    def test_leading_zero_run_read_digit_by_digit(self):
+        # 10 digits, no separators: each digit named in sequence.
+        self.assertEqual(
+            normalize_for_tts("เบอร์ 0212345678"),
+            "เบอร์ ศูนย์สองหนึ่งสองสามสี่ห้าหกเจ็ดแปด",
+        )
+
+    def test_short_leading_zero_identifier(self):
+        self.assertEqual(normalize_for_tts("รหัส 081"), "รหัส ศูนย์แปดหนึ่ง")
+
+    def test_dash_groups_join_with_spaces(self):
+        # 02-123-4567: each group digit-by-digit, dashes -> single spaces.
+        self.assertEqual(
+            normalize_for_tts("02-123-4567"),
+            "ศูนย์สอง หนึ่งสองสาม สี่ห้าหกเจ็ด",
+        )
+
+    def test_identifier_respects_numbers_toggle(self):
+        # With number normalization off, identifiers pass through untouched.
+        self.assertEqual(
+            normalize_for_tts("081-234-5678", numbers=False),
+            "081-234-5678",
+        )
+
+    # --- Regression guards: Quantities and decimals are not reclassified -----
+
+    def test_quantity_without_leading_zero_stays_magnitude(self):
+        self.assertEqual(normalize_for_tts("1234"), "หนึ่งพันสองร้อยสามสิบสี่")
+
+    def test_zero_alone_is_quantity(self):
+        # A single 0 is the quantity zero, not an Identifier.
+        self.assertEqual(normalize_for_tts("0"), "ศูนย์")
+
+    def test_internal_zero_not_identifier(self):
+        # The 0 inside 1007 is not a run start -> magnitude (no regression).
+        self.assertEqual(normalize_for_tts("1007"), "หนึ่งพันเจ็ด")
+
+    def test_decimal_integer_part_not_identifier(self):
+        # 0.5 and 012.34: the run abuts a decimal point -> not an Identifier.
+        self.assertEqual(normalize_for_tts("0.5"), "ศูนย์จุดห้า")
+        self.assertEqual(normalize_for_tts("012.34"), "สิบสองจุดสามสี่")
+
+    def test_decimal_fraction_zero_not_identifier(self):
+        # The 0 in the fractional part of 1.081 stays with the decimal (no
+        # reprocessing as an Identifier).
+        self.assertEqual(normalize_for_tts("1.081"), "หนึ่งจุดศูนย์แปดหนึ่ง")
+
+    def test_dash_sequence_without_leading_zero_stays_magnitude(self):
+        # 2024-03-15: first group has no leading zero -> not an Identifier;
+        # magnitude conversion applies as before (dates are a separate slice).
+        self.assertEqual(
+            normalize_for_tts("2024-03-15"),
+            "สองพันยี่สิบสี่ลบสามลบสิบห้า",
         )
 
 

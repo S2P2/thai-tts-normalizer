@@ -110,9 +110,13 @@ All via environment variables (see `.env.example`):
 
 ## Limitations
 
-- **Phone numbers / long digit strings** are read as a whole number
-  (`021234567` → a very large number), not digit-by-digit. This is inherited
-  from PyThaiTTS's digit→word logic. Tell me if you need phone-number handling.
+- **Phone numbers and other leading-zero identifiers** are read digit-by-digit
+  when the first digit group starts with `0` (e.g. `081-234-5678` →
+  `ศูนย์แปดหนึ่ง สองสามสี่ ห้าหกเจ็ดแปด`; `0212345678` read digit-by-digit).
+  The trigger is deliberately narrow — a Quantity never has a leading zero, so
+  this never misreads a Quantity. Not yet handled (planned follow-up slices):
+  identifiers *without* a leading zero (national ID, account/tracking numbers,
+  zip codes) and keyword-driven detection (`โทร`/`เบอร์`/`รหัส` + digits).
 - **Thai numerals** (๑๒๓) are not converted — only Arabic digits (123).
   Many TTS servers (including OmniVoice) handle Thai numerals already.
 - **Scope of digit conversion**: every digit run is converted, including
