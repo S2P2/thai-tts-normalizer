@@ -20,3 +20,26 @@ Create a GitHub issue.
 ## When a skill says "fetch the relevant ticket"
 
 Run `gh issue view <number> --comments`.
+
+## Auto-closing issues from PR bodies
+
+GitHub closes issues referenced by auto-close keywords (`Closes`, `Fixes`, `Resolves`) in a **merged** PR's title or body. Two gotchas to avoid:
+
+- **One keyword per issue, on its own line or clearly separated.** The comma-list form — `Closes #2, #3` — closes **only the first** issue; the rest are silently ignored. Write each on its own line:
+  ```
+  Closes #2
+  Closes #3
+  ```
+- **Only merge the PR once the auto-close set is correct.** Editing the body after merge does **not** retroactively open/close issues. If a PR wrongly auto-closes an issue (e.g. a fix shipped opt-in, not by default), reopen it with `gh issue reopen <n> --comment "..."` and explain why; if it fails to auto-close one that should be (comma-list bug, typo), close it manually with `gh issue close <n> --comment "..."`.
+
+Before merging a PR that auto-closes issues, verify the keyword list against the intended close set and confirm each referenced issue is actually resolved **in the default configuration**, not behind an opt-in toggle.
+
+## `gh` flag gotchas
+
+- **`gh issue close` / `gh issue reopen` `--comment` takes a literal string, not a file path.** Unlike `gh issue comment --body-file <FILE>`, the `--comment` flag has no `--comment-file` sibling. Passing `--comment .some-file.md` posts the literal text `.some-file.md` as the comment body (the state change still succeeds, which masks the bug). For multi-line comments from a file, post the comment separately first, then change state:
+  ```
+  gh issue comment <n> --body-file .my-comment.md
+  gh issue close <n>      # or: gh issue reopen <n>
+  ```
+  Or inline the text: `gh issue close <n> --comment "$(cat .my-comment.md)"`.
+- **The success message (`✓ Reopened issue #N`) does not mean the comment landed correctly.** Always verify the last comment's body with `gh issue view <n> --json comments -q '.comments[-1].body'` after a state change with `--comment`.

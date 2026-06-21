@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live as GitHub issues; all operations use the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live as GitHub issues; all operations use the `gh` CLI. See `docs/agents/issue-tracker.md`, including its notes on **auto-closing issues from PR bodies** (one keyword per issue; verify the close set before merging) and **`gh` flag gotchas** (`close`/`reopen --comment` takes a literal string, not a file).
 
 ### Triage labels
 

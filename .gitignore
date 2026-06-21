@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .env
+
+# pi coding-agent local config (per-user, not versioned)
+.pi/
