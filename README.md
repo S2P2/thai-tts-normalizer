@@ -103,6 +103,11 @@ All via environment variables (see `.env.example`):
 | `REQUEST_TIMEOUT` | `120` | Connect/write timeout (s). Audio streaming has no read timeout. |
 | `LOG_LEVEL` | `INFO` | Log verbosity. |
 
+> **Note:** `YAMOK_MENTION_RENDER` applies only to a ๆ that is the sole
+> content of a matched quote/bracket pair (the delimiter-detected case).
+> A bare ๆ with no surrounding delimiters is kept verbatim regardless of
+> this setting. (`CONTEXT.md` defines *mentioned* more broadly.)
+
 ## Limitations
 
 - **Phone numbers / long digit strings** are read as a whole number
