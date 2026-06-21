@@ -229,14 +229,11 @@ def _get_word_tokenize():
 
 def warmup_yamok_segmenter() -> None:
     """Eagerly load pythainlp (import + newmm trie) so the first real request
-    does not pay the ~250ms first-call cost. No-op if pythainlp is not
-    installed; callers should only invoke this when ``segmenter="pythainlp"``
-    is in effect (issue #2).
+    does not pay the ~250ms first-call cost. Callers must only invoke this
+    when ``segmenter="pythainlp"`` is in effect (issue #2), i.e. after
+    ``_resolve_segmenter`` has already proven pythainlp importable.
     """
-    try:
-        _get_word_tokenize()("เดินช้า")
-    except ImportError:
-        pass
+    _get_word_tokenize()("เดินช้า")
 
 
 def _is_mentioned_yamok(text: str, i: int) -> bool:
