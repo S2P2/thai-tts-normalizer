@@ -8,6 +8,18 @@ version lives in `app.py` (`version="..."`).
 
 ## Unreleased
 
+### Added
+
+- **Optional pythainlp segmenter for ๆ (issue #2, ADR-0001).** A *used* ๆ can
+  now repeat only the last *word* before it instead of the whole Thai run —
+  e.g. `เดินช้าๆ` → `เดินช้าช้า` (was `เดินช้าเดินช้า`) — when the new
+  `YAMOK_SEGMENTER=pythainlp` toggle is set. pythainlp is an **optional**
+  dependency (`pip install pythainlp`; not added to `requirements.txt`), so the
+  default (`off`) keeps the normalizer stdlib-only and reproduces today's
+  behaviour. `word_tokenize` is imported lazily and warmed up once at startup;
+  if the package is absent the setting falls back to `off` with a warning.
+  Decision recorded in ADR-0001 (`docs/adr/`).
+
 ### Fixed
 
 - **Don't expand ๆ when it's quoted/mentioned (issue #1).** A ๆ that is the
