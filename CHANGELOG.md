@@ -10,6 +10,15 @@ version lives in `app.py` (`version="..."`).
 
 ### Added
 
+- **Configurable rendering of a mentioned ๆ (issue #7).** A *mentioned* ๆ
+  — one that is the sole content of a matched quote/code span rather than a
+  repetition mark — must still be emitted somehow, and different TTS models
+  handle the bare character differently. New `YAMOK_MENTION_RENDER` env var
+  selects how: `keep` (default, emit verbatim), `name` (replace with
+  `ไม้ยมก`, its spoken name), or `strip` (remove it). A ๆ *used* as a
+  repetition mark is always expanded regardless of the mode. Threaded env →
+  `app.py` constant → `normalize_for_tts` kwarg → `expand_maiyamok` param.
+
 - **Optional pythainlp segmenter for ๆ (issue #2, ADR-0001).** A *used* ๆ can
   now repeat only the last *word* before it instead of the whole Thai run —
   e.g. `เดินช้าๆ` → `เดินช้าช้า` (was `เดินช้าเดินช้า`) — when the new
@@ -21,6 +30,11 @@ version lives in `app.py` (`version="..."`).
   Decision recorded in ADR-0001 (`docs/adr/`).
 
 ### Fixed
+
+- **Keep a bare ๆ instead of silently deleting it (issue #4).** A ๆ with
+  nothing valid to repeat (a bare ๆ, or one preceded only by non-Thai text)
+  was silently skipped, losing what the user typed. `expand_maiyamok` now
+  keeps it verbatim — not safe or reversible to drop input silently.
 
 - **Read leading-zero identifiers (phone numbers) digit-by-digit (issue #3,
   first slice).** A digit run whose first group starts with `0` (len ≥ 2), or a
