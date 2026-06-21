@@ -1,0 +1,6 @@
+# Test-only dependencies. NOT shipped to runtime users -- runtime only needs
+# requirements.txt. CI installs these so the @unittest.skipUnless(pythainlp)
+# tests for the optional YAMOK_SEGMENTER segmenter (issue #2, ADR-0001) actually
+# run. A runtime user only needs pythainlp if they enable
+# YAMOK_SEGMENTER=pythainlp. (word_tokenize's API is stable across 5.x.)
+pythainlp>=5.0

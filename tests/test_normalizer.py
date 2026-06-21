@@ -12,13 +12,12 @@ Adaptations made here:
   * Imports point at our vendored copy (``thai_normalizer``), not pythaitts.
   * Loose upstream assertions (assertIn / assertNotIn) are tightened to pin the
     exact expected string, so behaviour drift is caught.
-  * The known bugs tracked in GitHub issues #2 and #3 are encoded as
-    ``@unittest.expectedFailure``. They stay green while the bug exists and flip
-    to "unexpected success" (red) the moment a fix lands -- which is the prompt
-    to remove the decorator and turn them into ordinary passing tests. Issues
-    #1 and #3 have since been fixed; their former expectedFailures are now
-    ordinary passing tests, plus coverage and regression-guard cases. Issue #2
-    remains an expectedFailure.
+  * Known bugs were historically encoded as ``@unittest.expectedFailure``
+    while open, then flipped to ordinary passing tests once fixed. All three
+    are now fixed: #1 and #3 are ordinary passing tests; #2 is fixed behind an
+    *optional* toggle (``segmenter="pythainlp"``, ADR-0001), so its test is
+    gated with ``@unittest.skipUnless`` on the optional ``pythainlp`` package
+    and skips in a stdlib-only checkout. CI installs pythainlp so it runs there.
   * Adds coverage for ``normalize_for_tts`` (our wrapper) that upstream does not
     have, including thousands-separator stripping and the toggle flags.
 
@@ -42,6 +41,18 @@ from thai_normalizer import (  # noqa: E402
     num_to_thai,
     preprocess_text,
 )
+
+
+def _pythainlp_available() -> bool:
+    """Issue #2's segmenter uses the *optional* pythainlp package. Tests that
+    exercise it skip when the package isn't installed (e.g. a stdlib-only
+    checkout); CI installs pythainlp as a test dependency so they run there."""
+    try:
+        import pythainlp  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
 
 
 class TestNumToThai(unittest.TestCase):
@@ -170,17 +181,38 @@ class TestExpandMaiyamok(unittest.TestCase):
         must survive rather than vanish."""
         self.assertEqual(expand_maiyamok("`ๆ"), "`ๆ")
 
-    # --- Known bug: expected to FAIL until issue #2 is fixed -----------------
+    # --- Issue #2: with segmenter="pythainlp", only the last word repeats ----
+    # pythainlp is an optional dependency (ADR-0001); these skip when it isn't
+    # installed. CI installs it so they run there.
 
-    @unittest.expectedFailure
+    @unittest.skipUnless(_pythainlp_available(), "pythainlp not installed")
     def test_maiyamok_in_sentence_repeats_only_last_word(self):
-        """Issue #2: with no space before ๆ, only the last word repeats.
+        """Issue #2: with no space before ๆ, segmenter="pythainlp" makes only
+        the last word repeat (the stdlib regex over-repeats the whole run)."""
+        self.assertEqual(expand_maiyamok("เดินช้าๆ", segmenter="pythainlp"), "เดินช้าช้า")
+        self.assertEqual(
+            expand_maiyamok("หรือพิมพ์ซ้ำคำตรงๆ", segmenter="pythainlp"),
+            "หรือพิมพ์ซ้ำคำตรงตรง",
+        )
 
-        Current (buggy) output is ``เดินช้าเดินช้า`` -- the whole run
-        ``เดินช้า`` is duplicated. Upstream's assertion was too weak
-        (assertNotIn ๆ + assertIn ช้า) and so never caught this.
-        """
-        self.assertEqual(expand_maiyamok("เดินช้าๆ"), "เดินช้าช้า")
+    def test_maiyamok_default_segmenter_is_off(self):
+        # Off by default: the whole run repeats. This is the stdlib-only
+        # behaviour, unchanged when the optional pythainlp segmenter is off.
+        self.assertEqual(expand_maiyamok("เดินช้าๆ"), "เดินช้าเดินช้า")
+
+    @unittest.skipUnless(_pythainlp_available(), "pythainlp not installed")
+    def test_segmenter_does_not_affect_mentioned_or_bare_yamok(self):
+        # The segmenter only changes what a *used* ๆ repeats; mentioned-ๆ
+        # rendering (issue #7) and a bare ๆ being kept (issue #4) are unchanged.
+        self.assertEqual(expand_maiyamok("ใช้ `ๆ` แทน", segmenter="pythainlp"), "ใช้ `ๆ` แทน")
+        self.assertEqual(expand_maiyamok("ๆ", segmenter="pythainlp"), "ๆ")
+
+    @unittest.skipUnless(_pythainlp_available(), "pythainlp not installed")
+    def test_yamok_segmenter_threads_through_normalize_for_tts(self):
+        self.assertEqual(
+            normalize_for_tts("เดินช้าๆ", yamok_segmenter="pythainlp"),
+            "เดินช้าช้า",
+        )
 
 
 class TestYamokMentionRender(unittest.TestCase):
