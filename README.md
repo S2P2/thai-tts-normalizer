@@ -122,6 +122,13 @@ All via environment variables (see `.env.example`):
   last word. Set `YAMOK_SEGMENTER=pythainlp` (with `pip install pythainlp`) to
   repeat only the last word (issue #2, ADR-0001).
 
+- **Mention-detection of ๆ needs its delimiters to survive.** A ๆ quoted with
+  backticks (`` `ๆ` ``) is correctly treated as *mentioned* only if the
+  backticks reach the normalizer. Clients that render markdown (e.g. Open WebUI)
+  consume backtick code spans, so the ๆ arrives bare and is read as *used*
+  (expanded). Use `'`, `"`, or curly quotes instead — they aren't markdown
+  delimiters and pass through.
+
 - **Phone numbers and other leading-zero identifiers** are read digit-by-digit
   when the first digit group starts with `0` (e.g. `081-234-5678` →
   `ศูนย์แปดหนึ่ง สองสามสี่ ห้าหกเจ็ดแปด`; `0212345678` read digit-by-digit).
