@@ -182,6 +182,91 @@ class TestExpandMaiyamok(unittest.TestCase):
         self.assertEqual(expand_maiyamok("เดินช้าๆ"), "เดินช้าช้า")
 
 
+class TestYamokMentionRender(unittest.TestCase):
+    """Configurable rendering of a *mentioned* ๆ (issue #7).
+
+    A mentioned ๆ is one inside a matched delimiter span (the
+    ``_is_mentioned_yamok`` case). Its rendering is controlled by
+    ``mention_render``: keep (default) / name (ไม้ยมก) / strip. A ๆ *used* as
+    a repetition mark must be unaffected by the mode in all three settings.
+    """
+
+    MENTIONED = "ใช้ `ๆ` แทน"  # ๆ is the sole content of a code span
+
+    def test_default_mode_is_keep(self):
+        # No kwarg == keep == today's behaviour: ๆ emitted verbatim.
+        self.assertEqual(expand_maiyamok(self.MENTIONED), self.MENTIONED)
+        self.assertEqual(
+            expand_maiyamok(self.MENTIONED, mention_render="keep"),
+            self.MENTIONED,
+        )
+
+    def test_name_mode_replaces_with_spoken_name(self):
+        self.assertEqual(
+            expand_maiyamok(self.MENTIONED, mention_render="name"),
+            "ใช้ `ไม้ยมก` แทน",
+        )
+
+    def test_strip_mode_removes_the_character(self):
+        self.assertEqual(
+            expand_maiyamok(self.MENTIONED, mention_render="strip"),
+            "ใช้ `` แทน",
+        )
+
+    def test_unrecognised_mode_falls_back_to_keep(self):
+        # Graceful degradation: a bogus mode must not crash or strip; it keeps.
+        self.assertEqual(
+            expand_maiyamok(self.MENTIONED, mention_render="bogus"),
+            self.MENTIONED,
+        )
+
+    def test_name_mode_across_other_delimiters(self):
+        for opener, closer, expected_inner in [
+            ("'", "'", "'ไม้ยมก'"),
+            ("(", ")", "(ไม้ยมก)"),
+            ("\u201c", "\u201d", "\u201cไม้ยมก\u201d"),
+        ]:
+            with self.subTest(open=opener):
+                inp = f"ใช้ {opener}ๆ{closer} แทน"
+                self.assertEqual(
+                    expand_maiyamok(inp, mention_render="name"),
+                    f"ใช้ {expected_inner} แทน",
+                )
+
+    def test_multiple_mentioned_each_rendered_per_mode(self):
+        self.assertEqual(
+            expand_maiyamok("`ๆ` และ `ๆ`", mention_render="name"),
+            "`ไม้ยมก` และ `ไม้ยมก`",
+        )
+
+    def test_used_yamok_unaffected_by_mode(self):
+        """A ๆ used as a repetition mark (following a Thai run) must still
+        expand regardless of the render mode."""
+        for mode in ("keep", "name", "strip", "bogus"):
+            with self.subTest(mode=mode):
+                self.assertEqual(expand_maiyamok("ดีๆ", mention_render=mode), "ดีดี")
+
+    def test_kwarg_threads_through_normalize_for_tts(self):
+        # Per-call kwarg is unit-testable without touching the env var.
+        self.assertEqual(
+            normalize_for_tts(self.MENTIONED, yamok_mention_render="name"),
+            "ใช้ `ไม้ยมก` แทน",
+        )
+        self.assertEqual(
+            normalize_for_tts(self.MENTIONED, yamok_mention_render="strip"),
+            "ใช้ `` แทน",
+        )
+        # Default kwarg == keep.
+        self.assertEqual(normalize_for_tts(self.MENTIONED), self.MENTIONED)
+
+    def test_mentioned_render_independent_of_maiyamok_toggle(self):
+        """With maiyamok expansion off, the mode is moot: nothing is touched."""
+        self.assertEqual(
+            normalize_for_tts(self.MENTIONED, maiyamok=False, yamok_mention_render="name"),
+            self.MENTIONED,
+        )
+
+
 class TestPreprocessText(unittest.TestCase):
     """Combined preprocessing (numbers + mai yamok)."""
 

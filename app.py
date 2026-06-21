@@ -26,7 +26,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.datastructures import UploadFile
 
-from thai_normalizer import normalize_for_tts
+from thai_normalizer import normalize_for_tts, YAMOK_MENTION_RENDERS
 
 # Hop-by-hop headers (RFC 7230) plus ``host``/``content-length`` which the
 # outbound client must recompute for the request body we forward.
@@ -48,6 +48,20 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
+def _resolve_mention_render() -> str:
+    """Resolve YAMOK_MENTION_RENDER to one of keep/name/strip; fall back to
+    ``keep`` with a warning on any unrecognised value (issue #7)."""
+    raw = os.environ.get("YAMOK_MENTION_RENDER", "keep").strip().lower()
+    if raw not in YAMOK_MENTION_RENDERS:
+        log.warning(
+            "YAMOK_MENTION_RENDER=%r is not one of %s; falling back to 'keep'",
+            raw,
+            sorted(YAMOK_MENTION_RENDERS),
+        )
+        return "keep"
+    return raw
 
 
 UPSTREAM_BASE_URL = os.environ.get("UPSTREAM_BASE_URL", "").rstrip("/")
@@ -77,6 +91,9 @@ if not UPSTREAM_BASE_URL:
         "requests. Set it to your TTS server root, e.g. http://omnivoice:8880"
     )
 
+# Resolved after `log` exists so a bad value can be warned about at import.
+YAMOK_MENTION_RENDER = _resolve_mention_render()
+
 @asynccontextmanager
 async def _lifespan(fastapi_app: FastAPI):
     # read timeout is disabled so long audio streams are never cut short.
@@ -85,10 +102,11 @@ async def _lifespan(fastapi_app: FastAPI):
         follow_redirects=True,
     )
     log.info(
-        "forwarding to %s | numbers=%s maiyamok=%s",
+        "forwarding to %s | numbers=%s maiyamok=%s yamok_mention_render=%s",
         UPSTREAM_BASE_URL or "(unset)",
         NORMALIZE_NUMBERS,
         NORMALIZE_MAIYAMOK,
+        YAMOK_MENTION_RENDER,
     )
     try:
         yield
@@ -128,7 +146,10 @@ def _maybe_normalize_body(body: bytes) -> tuple[bytes, Optional[str], Optional[s
     if not isinstance(text, str):
         return body, None, None
     normalized = normalize_for_tts(
-        text, numbers=NORMALIZE_NUMBERS, maiyamok=NORMALIZE_MAIYAMOK
+        text,
+        numbers=NORMALIZE_NUMBERS,
+        maiyamok=NORMALIZE_MAIYAMOK,
+        yamok_mention_render=YAMOK_MENTION_RENDER,
     )
     if normalized == text:
         return body, None, None
@@ -160,7 +181,10 @@ async def _maybe_normalize_clone(
     for key, value in form.multi_items():
         if key == "text" and isinstance(value, str):
             normalized = normalize_for_tts(
-                value, numbers=NORMALIZE_NUMBERS, maiyamok=NORMALIZE_MAIYAMOK
+                value,
+                numbers=NORMALIZE_NUMBERS,
+                maiyamok=NORMALIZE_MAIYAMOK,
+                yamok_mention_render=YAMOK_MENTION_RENDER,
             )
             before = value
             after = normalized
@@ -254,6 +278,7 @@ async def _health() -> dict[str, Any]:
         "upstream": UPSTREAM_BASE_URL or "(unset)",
         "numbers": NORMALIZE_NUMBERS,
         "maiyamok": NORMALIZE_MAIYAMOK,
+        "yamok_mention_render": YAMOK_MENTION_RENDER,
     }
 
 

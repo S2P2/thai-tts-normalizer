@@ -187,6 +187,13 @@ _YAMOK_PAIR_DELIMS = {
     "[": "]",
 }
 
+# How a *mentioned* ๆ (the sole content of a matched delimiter span) is
+# rendered. "keep" emits the ๆ verbatim (default); "name" replaces it with
+# ไม้ยมก (its spoken name); "strip" omits it. A ๆ *used* as a repetition
+# mark is always expanded regardless of this setting. See CONTEXT.md
+# (Kept / Named / Stripped) and issue #7.
+YAMOK_MENTION_RENDERS = frozenset({"keep", "name", "strip"})
+
 
 def _is_mentioned_yamok(text: str, i: int) -> bool:
     """Return True if the ๆ at ``text[i]`` is the sole/whitespace-only
@@ -217,12 +224,16 @@ def _is_mentioned_yamok(text: str, i: int) -> bool:
     return _YAMOK_PAIR_DELIMS.get(left) == right
 
 
-def expand_maiyamok(text: str) -> str:
+def expand_maiyamok(text: str, mention_render: str = "keep") -> str:
     """Expand the Thai repetition character (ๆ) by repeating the previous word.
 
-    A ๆ that is the sole content of a quote/code span is left untouched (it
-    is being *mentioned* as a character, not used as a repetition mark); see
-    issue #1.
+    A ๆ that is the sole content of a quote/code span is *mentioned*, not
+    used as a repetition mark; how it is rendered is controlled by
+    ``mention_render`` — ``keep`` (default) emits it verbatim, ``name``
+    replaces it with ``ไม้ยมก``, ``strip`` omits it (see CONTEXT.md: Kept /
+    Named / Stripped). Any unrecognised value falls back to ``keep``. A ๆ
+    used as a repetition mark is always expanded regardless of the mode
+    (issue #1, #7).
     """
     if "ๆ" not in text:
         return text
@@ -232,8 +243,14 @@ def expand_maiyamok(text: str) -> str:
     while i < len(text):
         if text[i] == "ๆ":
             if _is_mentioned_yamok(text, i):
-                # Mentioned inside a quote/code span; keep it as-is.
-                result.append("ๆ")
+                # Mentioned inside a quote/code span; render per the mode.
+                # An unrecognised mode falls back to "keep" (issue #7).
+                if mention_render == "name":
+                    result.append("ไม้ยมก")
+                elif mention_render == "strip":
+                    pass
+                else:
+                    result.append("ๆ")
             else:
                 # Find the previous Thai word/syllable to repeat. If there is
                 # nothing valid to repeat (a bare ๆ, or only non-Thai text
@@ -259,13 +276,14 @@ def preprocess_text(
     text: str,
     expand_numbers: bool = True,
     expand_maiyamok_char: bool = True,
+    yamok_mention_render: str = "keep",
 ) -> str:
     """Preprocess Thai text: convert numbers to text and expand ๆ."""
     result = text
 
     # Expand mai yamok (ๆ) first
     if expand_maiyamok_char:
-        result = expand_maiyamok(result)
+        result = expand_maiyamok(result, mention_render=yamok_mention_render)
 
     # Convert numbers to Thai text
     if expand_numbers:
@@ -290,6 +308,7 @@ def normalize_for_tts(
     *,
     numbers: bool = True,
     maiyamok: bool = True,
+    yamok_mention_render: str = "keep",
 ) -> str:
     """Normalize Thai text for speech synthesis.
 
@@ -297,7 +316,10 @@ def normalize_for_tts(
     - Converts Arabic digits to Thai words (``123`` -> ``หนึ่งร้อยยี่สิบสาม``).
     - Expands the repetition mark ๆ (``ดีๆ`` -> ``ดีดี``).
 
-    Both transforms can be toggled off independently.
+    Both transforms can be toggled off independently. ``yamok_mention_render``
+    controls how a *mentioned* ๆ (inside a matched delimiter span) is rendered
+    — ``keep`` (default) / ``name`` (ไม้ยมก) / ``strip``; a ๆ used as a
+    repetition mark is always expanded regardless (issue #7).
     """
     if not isinstance(text, str) or not text:
         return text
@@ -309,4 +331,5 @@ def normalize_for_tts(
         text,
         expand_numbers=numbers,
         expand_maiyamok_char=maiyamok,
+        yamok_mention_render=yamok_mention_render,
     )
