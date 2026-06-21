@@ -147,6 +147,28 @@ class TestExpandMaiyamok(unittest.TestCase):
         self.assertEqual(expand_maiyamok('เขียน "เร็วๆ" หน่อย'), 'เขียน "เร็วเร็ว" หน่อย')
         self.assertEqual(expand_maiyamok("(ดีๆ)"), "(ดีดี)")
 
+    # --- Issue #4: a bare ๆ (nothing valid to repeat) is kept, not skipped ----
+
+    def test_maiyamok_bare_at_start_is_kept(self):
+        """A ๆ with no preceding Thai word to repeat is kept verbatim."""
+        self.assertEqual(expand_maiyamok("ๆ นี่คือไม้ยมก"), "ๆ นี่คือไม้ยมก")
+
+    def test_maiyamok_bare_among_punctuation_is_kept(self):
+        self.assertEqual(expand_maiyamok("!!! ๆ !!!"), "!!! ๆ !!!")
+
+    def test_maiyamok_bare_alone_is_kept(self):
+        self.assertEqual(expand_maiyamok("ๆ"), "ๆ")
+
+    def test_maiyamok_after_non_thai_is_kept(self):
+        """A ๆ following only non-Thai characters has nothing to repeat; keep it."""
+        self.assertEqual(expand_maiyamok("abc ๆ xyz"), "abc ๆ xyz")
+
+    def test_maiyamok_unbalanced_opener_bare_is_kept(self):
+        """Regression guard for the reported case `` `ๆ `` (unbalanced opener):
+        the ๆ is not inside a matched span and has no Thai run before it, so it
+        must survive rather than vanish."""
+        self.assertEqual(expand_maiyamok("`ๆ"), "`ๆ")
+
     # --- Known bug: expected to FAIL until issue #2 is fixed -----------------
 
     @unittest.expectedFailure

@@ -4,9 +4,11 @@ The number-to-Thai and ๆ (mai yamok) expansion logic below is derived
 from PyThaiTTS (pythaitts.preprocess) — see
 https://github.com/PyThaiNLP/PyThaiTTS — licensed under the Apache License,
 Version 2.0. The number-to-Thai functions are vendored verbatim;
-``expand_maiyamok`` carries one localized enhancement over the upstream
-original (it leaves a ๆ untouched when it is mentioned inside a quote/code
-span rather than used as a repetition mark — see its docstring and issue #1).
+``expand_maiyamok`` carries localized enhancements over the upstream
+original: it leaves a ๆ untouched when it is mentioned inside a quote/code
+span rather than used as a repetition mark (see its docstring and issue #1),
+and it keeps a bare ๆ (one with nothing valid to repeat) verbatim instead
+of silently skipping it (issue #4).
 These functions are pure Python (only the stdlib ``re``) and do not pull in
 any TTS model dependencies, which is why they are vendored here rather than
 installed via ``pip install pythaitts`` (that package would try to download
@@ -232,15 +234,18 @@ def expand_maiyamok(text: str) -> str:
             if _is_mentioned_yamok(text, i):
                 # Mentioned inside a quote/code span; keep it as-is.
                 result.append("ๆ")
-            elif result:
-                # Find the previous word/syllable to repeat
-                prev_text = "".join(result)
-                thai_char_pattern = r"[ก-๙]+"
-                matches = list(re.finditer(thai_char_pattern, prev_text))
-                if matches:
-                    last_match = matches[-1]
-                    word_to_repeat = last_match.group()
-                    result.append(word_to_repeat)
+            else:
+                # Find the previous Thai word/syllable to repeat. If there is
+                # nothing valid to repeat (a bare ๆ, or only non-Thai text
+                # before it), keep the ๆ verbatim rather than silently skipping
+                # it (issue #4); skipping what the user typed is not safe or
+                # reversible.
+                repeated = ""
+                if result:
+                    matches = list(re.finditer(r"[ก-๙]+", "".join(result)))
+                    if matches:
+                        repeated = matches[-1].group()
+                result.append(repeated or "ๆ")
             i += 1
         else:
             result.append(text[i])
