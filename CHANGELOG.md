@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 project aims to follow [Semantic Versioning](https://semver.org/). The current
 version lives in `app.py` (`version="..."`).
 
-## Unreleased
+## 0.1.3 — 2026-06-21
 
 ### Added
 

@@ -150,7 +150,7 @@ async def _lifespan(fastapi_app: FastAPI):
         await fastapi_app.state.client.aclose()
 
 
-app = FastAPI(title="Thai TTS Normalizing Proxy", version="0.1.2", lifespan=_lifespan)
+app = FastAPI(title="Thai TTS Normalizing Proxy", version="0.1.3", lifespan=_lifespan)
 
 
 def _request_headers(src: Request) -> dict[str, str]:
