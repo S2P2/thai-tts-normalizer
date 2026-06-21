@@ -271,7 +271,48 @@ def expand_maiyamok(text: str, mention_render: str = "keep") -> str:
     return "".join(result)
 
 
-# preprocess_text below is vendored verbatim from PyThaiTTS/pythaitts/preprocess.py.
+# --- Local enhancement: Identifier reading (issue #3; not in upstream) -------
+#
+# A digit string can be a *Quantity* (read by magnitude: 123 -> หนึ่งร้อย...)
+# or an *Identifier* (read digit-by-digit: 081 -> ศูนย์แปดหนึ่ง). Upstream reads
+# every digit run by magnitude, which loses leading zeros, misreading phone
+# numbers and other leading-zero identifiers. Per CONTEXT.md (Quantity / Identifier), the reading mode
+# depends on format, not the digits alone. This first-slice heuristic flags the
+# least ambiguous Identifier signal: a digit run -- or a dash-separated
+# sequence of digit groups -- whose FIRST group starts with '0' (len >= 2). A
+# Quantity never has a leading zero, so this never reclassifies a real
+# Quantity. Other Identifier signals (nearby keywords like โทร/เบอร์/รหัส) and
+# the rest of the family (national ID, zip, account no. without a leading zero)
+# are deliberate follow-up slices.
+#
+# The lookarounds keep the heuristic out of decimals and larger numbers. The
+# lookbehind ``(?<![\d.\-])`` requires the '0' to begin a standalone token:
+# not embedded in a longer number (1007), not the fractional part of a decimal
+# (1.081), and not a later group of a dash sequence whose first group had no
+# leading zero (2024-03-15 -> the 03 is not an Identifier). The trailing
+# ``(?![\d.])`` stops a run that abuts a decimal point from being split off by
+# backtracking (0.5, 012.34 pass through to magnitude/decimal handling whole).
+_IDENTIFIER = re.compile(r"(?<![\d.\-])0\d+(?:-\d+)*(?![\d.])")
+
+
+def _digits_to_thai_names(digit_str: str) -> str:
+    """Read each digit by name, ignoring place value (``081`` -> ``ศูนย์แปดหนึ่ง``).
+
+    Same per-digit mapping ``num_to_thai`` uses for a decimal's fractional part
+    (CONTEXT.md: Digit reading).
+    """
+    return "".join(THAI_ONES[int(d)] if d != "0" else "ศูนย์" for d in digit_str)
+
+
+def _identifier_to_thai(match: "re.Match[str]") -> str:
+    # ``081-234-5678`` -> ``ศูนย์แปดหนึ่ง สองสามสี่ ห้าหกเจ็ดแปด``: each digit read
+    # by name within its group, dash separators between groups -> single spaces.
+    return " ".join(_digits_to_thai_names(group) for group in match.group().split("-"))
+
+
+# preprocess_text below is vendored from PyThaiTTS/pythaitts/preprocess.py; the
+# identifier pass inside it (issue #3) is a local addition, as is the
+# yamok_mention_render kwarg threaded into expand_maiyamok (issue #7).
 def preprocess_text(
     text: str,
     expand_numbers: bool = True,
@@ -287,6 +328,11 @@ def preprocess_text(
 
     # Convert numbers to Thai text
     if expand_numbers:
+        # Identifiers (a leading-zero phone number and the like) are read
+        # digit-by-digit *before* magnitude conversion, which would otherwise
+        # lose the leading zero (issue #3). Deviation from upstream, noted above.
+        result = _IDENTIFIER.sub(_identifier_to_thai, result)
+
         def replace_number(match):
             return num_to_thai(match.group())
 

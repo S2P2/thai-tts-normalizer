@@ -136,6 +136,16 @@ def main() -> int:
     fwd = _json.loads(received[-1]["raw"])
     check(fwd["input"] == "ดีดี หนึ่งร้อยยี่สิบสาม", "input normalized (/audio): " + fwd["input"])
 
+    # 2b. issue #3: a leading-zero phone number is read digit-by-digit, dashes
+    #     -> spaces, end-to-end through the proxy.
+    received.clear()
+    httpx.post(f"{base}/v1/audio/speech", json={"input": "โทร 081-234-5678"})
+    fwd = _json.loads(received[-1]["raw"])
+    check(
+        fwd["input"] == "โทร ศูนย์แปดหนึ่ง สองสามสี่ ห้าหกเจ็ดแปด",
+        f"phone number read digit-by-digit: {fwd['input']}",
+    )
+
     # 3. already-normalized / no digits-or-ๆ text passes through unchanged
     received.clear()
     httpx.post(f"{base}/v1/audio/speech", json={"input": "สวัสดีครับ"})
