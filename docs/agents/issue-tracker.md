@@ -20,3 +20,16 @@ Create a GitHub issue.
 ## When a skill says "fetch the relevant ticket"
 
 Run `gh issue view <number> --comments`.
+
+## Auto-closing issues from PR bodies
+
+GitHub closes issues referenced by auto-close keywords (`Closes`, `Fixes`, `Resolves`) in a **merged** PR's title or body. Two gotchas to avoid:
+
+- **One keyword per issue, on its own line or clearly separated.** The comma-list form — `Closes #2, #3` — closes **only the first** issue; the rest are silently ignored. Write each on its own line:
+  ```
+  Closes #2
+  Closes #3
+  ```
+- **Only merge the PR once the auto-close set is correct.** Editing the body after merge does **not** retroactively open/close issues. If a PR wrongly auto-closes an issue (e.g. a fix shipped opt-in, not by default), reopen it with `gh issue reopen <n> --comment "..."` and explain why; if it fails to auto-close one that should be (comma-list bug, typo), close it manually with `gh issue close <n> --comment "..."`.
+
+Before merging a PR that auto-closes issues, verify the keyword list against the intended close set and confirm each referenced issue is actually resolved **in the default configuration**, not behind an opt-in toggle.
