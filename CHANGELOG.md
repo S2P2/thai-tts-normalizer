@@ -43,7 +43,7 @@ version lives in `app.py` (`version="..."`).
   becoming single spaces — e.g. `โทร 081-234-5678` → `โทร ศูนย์แปดหนึ่ง สองสามสี่
   ห้าหกเจ็ดแปด`, and `0212345678` is read digit-by-digit instead of as one
   large magnitude. The trigger is deliberately narrow: a Quantity never has a
-  leading zero, so amounts and decimals (`0.5`, `1.081`, `012.34`, `1007`,
+  leading zero, so Quantities and decimals (`0.5`, `1.081`, `012.34`, `1007`,
   `1234`, dates like `2024-03-15`) are unchanged. Partially closes the
   phone-number item from the 0.1.0 known limitations. Identifiers without a
   leading zero (national ID, zip, account no.), keyword-driven detection, and
