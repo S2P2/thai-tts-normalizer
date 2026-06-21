@@ -7,12 +7,16 @@ Version 2.0. The number-to-Thai functions are vendored verbatim;
 ``expand_maiyamok`` carries localized enhancements over the upstream
 original: it leaves a ๆ untouched when it is mentioned inside a quote/code
 span rather than used as a repetition mark (see its docstring and issue #1),
-and it keeps a bare ๆ (one with nothing valid to repeat) verbatim instead
-of silently skipping it (issue #4).
-These functions are pure Python (only the stdlib ``re``) and do not pull in
-any TTS model dependencies, which is why they are vendored here rather than
-installed via ``pip install pythaitts`` (that package would try to download
-TTS model weights).
+it keeps a bare ๆ (one with nothing valid to repeat) verbatim instead of
+silently skipping it (issue #4), and -- when explicitly enabled via the
+``segmenter`` argument -- it uses pythainlp to repeat only the last *word*
+before a used ๆ rather than the whole Thai run (issue #2).
+These functions are pure Python (only the stdlib ``re``) by default and do
+not pull in any TTS model dependencies, which is why they are vendored here
+rather than installed via ``pip install pythaitts`` (that package would try
+to download TTS model weights). The optional ``segmenter="pythainlp"`` path
+(issue #2) pulls in the ``pythainlp`` package, an *optional* dependency that
+callers install themselves; the default path stays stdlib-only.
 
 The wrapper ``normalize_for_tts`` adds one small enhancement on top: it strips
 thousands separators between digits (``1,200`` -> ``1200``) before number
@@ -194,6 +198,46 @@ _YAMOK_PAIR_DELIMS = {
 # (Kept / Named / Stripped) and issue #7.
 YAMOK_MENTION_RENDERS = frozenset({"keep", "name", "strip"})
 
+# How the previous word for a *used* ๆ is found. "off" (default) repeats the
+# last ``[ก-๙]+`` run -- the stdlib-only behaviour, which over-repeats when
+# Thai words are not space-separated (issue #2). "pythainlp" segments the
+# preceding text with pythainlp and repeats only the last word. pythainlp is
+# an OPTIONAL dependency: the "pythainlp" setting is only honoured when the
+# package is importable, otherwise callers fall back to "off" (see app.py).
+# See CONTEXT.md (ๆ / Used) and issue #2. ADR-0001 records the decision to
+# take the dependency behind this toggle.
+YAMOK_SEGMENTERS = frozenset({"off", "pythainlp"})
+
+_word_tokenize = None  # cached lazily by _get_word_tokenize
+
+
+def _get_word_tokenize():
+    """Lazily import and cache pythainlp's ``word_tokenize``.
+
+    Imported lazily so the default (stdlib-only) path never pays for -- or
+    even requires -- pythainlp. The newmm trie pythainlp builds on first call
+    is cached in a pythainlp-internal process global, so holding the function
+    is enough. Raises ``ImportError`` if pythainlp is not installed.
+    """
+    global _word_tokenize
+    if _word_tokenize is None:
+        from pythainlp.tokenize import word_tokenize
+
+        _word_tokenize = word_tokenize
+    return _word_tokenize
+
+
+def warmup_yamok_segmenter() -> None:
+    """Eagerly load pythainlp (import + newmm trie) so the first real request
+    does not pay the ~250ms first-call cost. No-op if pythainlp is not
+    installed; callers should only invoke this when ``segmenter="pythainlp"``
+    is in effect (issue #2).
+    """
+    try:
+        _get_word_tokenize()("เดินช้า")
+    except ImportError:
+        pass
+
 
 def _is_mentioned_yamok(text: str, i: int) -> bool:
     """Return True if the ๆ at ``text[i]`` is the sole/whitespace-only
@@ -224,7 +268,30 @@ def _is_mentioned_yamok(text: str, i: int) -> bool:
     return _YAMOK_PAIR_DELIMS.get(left) == right
 
 
-def expand_maiyamok(text: str, mention_render: str = "keep") -> str:
+def _last_repeatable_word(prev_text: str, segmenter: str) -> str:
+    """Return the text a *used* ๆ should repeat.
+
+    With ``segmenter="off"`` (default) this is the last ``[ก-๙]+`` run -- the
+    stdlib-only behaviour, which over-repeats when Thai words are not
+    space-separated (issue #2). With ``segmenter="pythainlp"`` it is the last
+    Thai word found by pythainlp's tokenizer. Returns "" when there is nothing
+    Thai to repeat; the caller then keeps the ๆ verbatim (issue #4).
+    """
+    if not prev_text:
+        return ""
+    if segmenter == "pythainlp":
+        # Walk the tokens back to the last non-whitespace one containing Thai
+        # characters (the tokenizer can emit whitespace/punctuation as tokens).
+        for token in reversed(_get_word_tokenize()(prev_text)):
+            token = token.strip()
+            if token and re.search(r"[ก-๙]", token):
+                return token
+        return ""
+    matches = list(re.finditer(r"[ก-๙]+", prev_text))
+    return matches[-1].group() if matches else ""
+
+
+def expand_maiyamok(text: str, mention_render: str = "keep", segmenter: str = "off") -> str:
     """Expand the Thai repetition character (ๆ) by repeating the previous word.
 
     A ๆ that is the sole content of a quote/code span is *mentioned*, not
@@ -234,6 +301,10 @@ def expand_maiyamok(text: str, mention_render: str = "keep") -> str:
     Named / Stripped). Any unrecognised value falls back to ``keep``. A ๆ
     used as a repetition mark is always expanded regardless of the mode
     (issue #1, #7).
+
+    ``segmenter`` controls how the word to repeat is found: ``off`` (default)
+    repeats the last ``[ก-๙]+`` run; ``pythainlp`` repeats only the last word
+    via segmentation (issue #2, needs the optional ``pythainlp`` package).
     """
     if "ๆ" not in text:
         return text
@@ -256,12 +327,9 @@ def expand_maiyamok(text: str, mention_render: str = "keep") -> str:
                 # nothing valid to repeat (a bare ๆ, or only non-Thai text
                 # before it), keep the ๆ verbatim rather than silently skipping
                 # it (issue #4); skipping what the user typed is not safe or
-                # reversible.
-                repeated = ""
-                if result:
-                    matches = list(re.finditer(r"[ก-๙]+", "".join(result)))
-                    if matches:
-                        repeated = matches[-1].group()
+                # reversible. With segmenter="pythainlp" only the last *word*
+                # repeats (issue #2); otherwise the whole Thai run does.
+                repeated = _last_repeatable_word("".join(result), segmenter) if result else ""
                 result.append(repeated or "ๆ")
             i += 1
         else:
@@ -277,13 +345,18 @@ def preprocess_text(
     expand_numbers: bool = True,
     expand_maiyamok_char: bool = True,
     yamok_mention_render: str = "keep",
+    yamok_segmenter: str = "off",
 ) -> str:
     """Preprocess Thai text: convert numbers to text and expand ๆ."""
     result = text
 
     # Expand mai yamok (ๆ) first
     if expand_maiyamok_char:
-        result = expand_maiyamok(result, mention_render=yamok_mention_render)
+        result = expand_maiyamok(
+            result,
+            mention_render=yamok_mention_render,
+            segmenter=yamok_segmenter,
+        )
 
     # Convert numbers to Thai text
     if expand_numbers:
@@ -309,6 +382,7 @@ def normalize_for_tts(
     numbers: bool = True,
     maiyamok: bool = True,
     yamok_mention_render: str = "keep",
+    yamok_segmenter: str = "off",
 ) -> str:
     """Normalize Thai text for speech synthesis.
 
@@ -320,6 +394,10 @@ def normalize_for_tts(
     controls how a *mentioned* ๆ (inside a matched delimiter span) is rendered
     — ``keep`` (default) / ``name`` (ไม้ยมก) / ``strip``; a ๆ used as a
     repetition mark is always expanded regardless (issue #7).
+    ``yamok_segmenter`` controls how the word to repeat is found for a used ๆ
+    — ``off`` (default) repeats the last Thai run; ``pythainlp`` repeats only
+    the last word via segmentation (issue #2, needs the optional ``pythainlp``
+    package).
     """
     if not isinstance(text, str) or not text:
         return text
@@ -332,4 +410,5 @@ def normalize_for_tts(
         expand_numbers=numbers,
         expand_maiyamok_char=maiyamok,
         yamok_mention_render=yamok_mention_render,
+        yamok_segmenter=yamok_segmenter,
     )
